@@ -5,8 +5,8 @@
 <title>MML l코드 자동 변환기</title>
 <style>
     body { font-family: sans-serif; padding: 20px; background:#fafafa; }
-    textarea { width: 100%; height: 150px; margin-bottom:10px; }
-    button { padding: 10px 20px; font-size:16px; margin-right:10px; cursor:pointer; }
+    textarea { width: 100%; height: 150px; margin-bottom:10px; font-size:14px; }
+    button { padding: 10px 20px; font-size:16px; cursor:pointer; margin-right:10px; }
 </style>
 </head>
 <body>
@@ -19,58 +19,55 @@
 <textarea id="output"></textarea>
 
 <script>
-// 음표 패턴: (< or >) + note + (#,+,- 가능) + 점(.) 가능
-const NOTE_REGEX = /[<>]?[a-grR][#\+\-]?\.?/i;
-
-function convertSingleChunk(chunk) {
-    // 1) & 로 분리
-    const parts = chunk.split('&');
-
-    // 2) 첫 파트에서 l값 추출
-    const first = parts[0];
-    const firstMatch = first.match(/l(\d+)\s*([<>]?[a-grR][#\+\-]?\.?)/i);
-
-    if (!firstMatch) return chunk; // 변환 불가 시 그대로 반환
-
-    const baseLength = firstMatch[1];     // l 숫자
-    const firstNote = firstMatch[2];      // 첫 음표
-
-    let output = [`l${baseLength}${firstNote}`];
-
-    // 3) 이후 & 뒤 음표 변환
-    for (let i = 1; i < parts.length; i++) {
-        let p = parts[i];
-
-        // l숫자 제거
-        p = p.replace(/l\d+/gi, '').trim();
-
-        // 실제 음표 추출
-        const m = p.match(/^([<>]?[a-grR][#\+\-]?)(\.?)/i);
-        if (!m) continue;
-
-        const pitch = m[1];   // a+  f   <c  >d+  R  등
-        const dot = m[2] || ''; // 점(.) 있으면 살림
-
-        // 길이 붙이기: note + baseLength + dot
-        output.push("&" + pitch + baseLength + dot);
-    }
-
-    return output.join('');
-}
-
+// MML 변환 함수
 function convert() {
     let text = document.getElementById("input").value;
 
-    // l숫자 다음 음표, 그리고 이어지는 &음들 ― 전체 패턴 인식
-    // 예: l16d+&d+.&<a&g+32.&R
-    const pattern = /l\d+[<>]?[a-grR][#\+\-]?\.?(?:&[<>]?[a-grR][#\+\-]?\.?)*/gi;
+    // 전체 l코드 묶음 단위로 찾기
+    // l숫자 뒤에 옥타브 기호(<,>) 또는 음(a~g), 샵/플랫(+,-,#), 부점(.)까지 포함
+    const pattern = /l(\d+)([<>]*[a-g][+#-]?\+?\.?)(?:&([<>]*[a-g][+#-]?\+?\.?))+/gi;
 
-    let result = text.replace(pattern, (match) => convertSingleChunk(match));
+    let result = text.replace(pattern, (match) => {
+
+        // & 기준으로 자르기
+        const parts = match.split('&');
+
+        // 첫 음: 원본 그대로
+        const first = parts[0];
+
+        // 첫 길이값 추출
+        const lenMatch = first.match(/l(\d+)/);
+        const baseLen = lenMatch ? lenMatch[1] : "";
+
+        let output = [first];
+
+        // 이후 음 처리
+        for (let i = 1; i < parts.length; i++) {
+            let p = parts[i].trim();
+
+            // 기존 l숫자 제거
+            p = p.replace(/l\d+/gi, '');
+
+            // 음표 구조 매칭 (옥타브 이동기호 포함)
+            const noteMatch = p.match(/^([<>]*[a-g][+#-]?\+?)(\.?)/i);
+            if (!noteMatch) continue;
+
+            const pitch = noteMatch[1];  // 음표 (예: >d+, <f, c#, g+ 등)
+            const dot = noteMatch[2];    // 점이 있는지 (. 또는 빈칸)
+
+            // 점은 음 뒤에 그대로 붙이고, baseLen을 점 앞에 붙임
+            const newNote = pitch + baseLen + dot;
+
+            output.push("&" + newNote);
+        }
+
+        return output.join('');
+    });
 
     document.getElementById("output").value = result;
 }
 
-// 지우기 기능
+// 입력·출력창 초기화
 function clearAll() {
     document.getElementById("input").value = "";
     document.getElementById("output").value = "";
