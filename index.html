@@ -21,14 +21,31 @@
 function convert() {
     let text = document.getElementById("input").value;
 
-    let first = true;
-    let result = text.replace(/l(\d+)/g, function(match, num){
-        if(first){
-            first = false;
-            return "l" + num;
-        } else {
-            return num;
+    // l숫자 + 음  + 이어지는 &음들 전체 묶음만 찾는 정규식
+    const pattern = /l(\d+)([a-gr][#+-]?)(?:&([a-gr][#+-]?\d*))+?/gi;
+
+    let result = text.replace(pattern, (match) => {
+        // '&' 기준으로 분리
+        const parts = match.split('&');
+        // parts[0] = "l4a+" 이런 형태
+
+        const first = parts[0]; 
+        let output = [first];
+
+        // &a+8, &a+16 같은 것 처리
+        for (let i = 1; i < parts.length; i++) {
+            const p = parts[i];
+
+            const note = p.match(/^([a-gr][#+-]?)(\d*)$/i);
+            if (!note) continue;
+
+            const pitch = note[1];
+            const len = note[2];
+
+            output.push("&" + pitch + (len ? len : ""));
         }
+
+        return output.join('');
     });
 
     document.getElementById("output").value = result;
