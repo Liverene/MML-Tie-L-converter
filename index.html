@@ -2,79 +2,161 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>MML l코드 자동 변환기</title>
+<title>MML l코드 자동 변환기 (Parser Edition)</title>
 <style>
-    body { font-family: sans-serif; padding: 20px; background:#fafafa; }
-    textarea { width: 100%; height: 140px; margin-bottom:10px; font-size:14px; }
-    button { padding: 10px 16px; font-size:15px; cursor:pointer; margin-right:8px;}
+    body { font-family: monospace; background:#f4f4f4; padding:20px; }
+    textarea { width:100%; height:140px; margin:10px 0; padding:10px; }
+    button { padding:10px 18px; font-size:15px; }
 </style>
 </head>
+
 <body>
+<h2>MML l코드 자동 변환기 (Full Parser)</h2>
+<p>예: <code>l16d+l32&d+. → l16d+&d+32.</code></p>
 
-<h2>MML l코드 자동 변환기</h2>
-<p>예: <code>l4a+l8&a+l16&a+l64&a+</code> → <code>l4a+&a+8&a+16&a+64</code></p>
-
-<textarea id="input" placeholder="여기에 MML을 붙여 넣으세요"></textarea><br>
+<textarea id="input"></textarea>
 <button onclick="convert()">변환하기</button>
-<button onclick="clearFields()">지우기</button>
-<textarea id="output" placeholder="결과가 여기에 표시됩니다"></textarea>
+<button onclick="clearAll()">지우기</button>
+<textarea id="output"></textarea>
 
 <script>
-/*
-    변환 규칙:
-    l16d+l32&d+.l8d+
-    → 
-    l16d+ & d+32. l8d+
-*/
+function tokenize(m) {
+    const tokens = [];
+    const regex = /t\d+|v\d+|l\d+|[<>]|&|[a-gr][#+-]?|r|\.|\d+|\s+/gi;
 
-function convert() {
-    let text = document.getElementById("input").value;
-
-    // 정규식 설명:
-    // l(길이) (첫 음표) (& 뒤에 이어지는 모든 음표 덩어리)
-    // 첫 음:   l16 d+ .?
-    // 이후 음: d+ 32?  .?
-    //
-    // 음표 패턴: [a-gA-G] [+#-] 가능, 점(.) 가능
-    // 길이 패턴: l1, l2, l4, l8, l16, l32, l64
-    //
-    const blockRegex = /l(\d+)([a-gA-G][+#-]?\+?\.?)([^l]*)/g;
-
-    text = text.replace(blockRegex, (match, firstLen, firstNote, tail) => {
-
-        // '&' 로 뒤에 계속 붙는 음표들을 나눈다
-        const pieces = match.split('&');
-
-        // pieces[0] = 첫 번째 "l16d+" 같은 부분
-        let out = [pieces[0]];
-
-        for (let i = 1; i < pieces.length; i++) {
-            let p = pieces[i].trim();
-
-            // 원래 있던 l길이는 제거
-            p = p.replace(/l(1|2|4|8|16|32|64)/g, '');
-
-            // 음표 + 점(.) 패턴 추출
-            const m = p.match(/^([a-gA-G][+#-]?\+?)(\.{0,2})$/);
-
-            if (m) {
-                const pitch = m[1];
-                const dots = m[2]; // . 또는 ..
-                // 길이를 pitch와 dots 사이에 삽입
-                out.push('&' + pitch + firstLen + dots);
-            } else {
-                out.push('&' + p);
-            }
-        }
-
-        return out.join('');
-    });
-
-    document.getElementById("output").value = text;
+    let match;
+    while ((match = regex.exec(m)) !== null) {
+        const tk = match[0];
+        if (!tk.trim()) continue; 
+        tokens.push(tk);
+    }
+    return tokens;
 }
 
-// 지우기 버튼 기능
-function clearFields() {
+function isPitch(t) {
+    return /^[a-gr][#+-]?$/i.test(t);
+}
+
+function isLengthToken(t) {
+    return /^l\d+$/i.test(t);
+}
+
+function isNumber(t) {
+    return /^\d+$/.test(t);
+}
+
+function parseAndTransform(tokens) {
+    const out = [];
+    let i = 0;
+
+    while (i < tokens.length) {
+        const t = tokens[i];
+
+        if (isLengthToken(t) && i + 1 < tokens.length && (isPitch(tokens[i+1]) || tokens[i+1] === 'r')) {
+            const baseLength = t;
+            const basePitch = tokens[i+1];
+            i += 2;
+
+            const cluster = {
+                base: { length: baseLength, pitch: basePitch, dot: false },
+                ties: []
+            };
+
+            if (tokens[i] === '.') {
+                cluster.base.dot = true;
+                i++;
+            }
+
+            while (i < tokens.length) {
+                let saved_i = i;
+                let lengthTwice = false;
+
+                if (isLengthToken(tokens[i])) {
+                    const len = tokens[i]; 
+                    i++;
+
+                    if (tokens[i] === '&') {
+                        i++;
+                        if (i < tokens.length && (isPitch(tokens[i]) || tokens[i] === 'r')) {
+                            const tiePitch = tokens[i];
+                            i++;
+
+                            let numberPart = "";
+                            let dotPart = false;
+
+                            if (i < tokens.length && isNumber(tokens[i])) {
+                                numberPart = tokens[i];
+                                i++;
+                            }
+                            if (i < tokens.length && tokens[i] === '.') {
+                                dotPart = true;
+                                i++;
+                            }
+
+                            cluster.ties.push({
+                                pitch: tiePitch,
+                                number: numberPart,
+                                dot: dotPart
+                            });
+                            continue;
+                        }
+                    }
+                    i = saved_i;
+                }
+
+                if (tokens[i] === '&') {
+                    i++;
+                    if (i < tokens.length && (isPitch(tokens[i]) || tokens[i] === 'r')) {
+                        const tiePitch = tokens[i];
+                        i++;
+
+                        let numberPart = "";
+                        let dotPart = false;
+                        if (i < tokens.length && isNumber(tokens[i])) {
+                            numberPart = tokens[i];
+                            i++;
+                        }
+                        if (i < tokens.length && tokens[i] === '.') {
+                            dotPart = true;
+                            i++;
+                        }
+
+                        cluster.ties.push({
+                            pitch: tiePitch,
+                            number: numberPart,
+                            dot: dotPart
+                        });
+                        continue;
+                    }
+                    i = saved_i;
+                }
+
+                break;
+            }
+
+            out.push(cluster.base.length + cluster.base.pitch + (cluster.base.dot ? "." : ""));
+
+            cluster.ties.forEach(tie => {
+                out.push("&" + tie.pitch + (tie.number ? tie.number : "") + (tie.dot ? "." : ""));
+            });
+
+        } else {
+            out.push(t);
+            i++;
+        }
+    }
+
+    return out.join('');
+}
+
+function convert() {
+    const text = document.getElementById("input").value;
+    const tokens = tokenize(text);
+    const result = parseAndTransform(tokens);
+    document.getElementById("output").value = result;
+}
+
+function clearAll() {
     document.getElementById("input").value = "";
     document.getElementById("output").value = "";
 }
