@@ -21,31 +21,39 @@
 function convert() {
     let text = document.getElementById("input").value;
 
-    // l숫자 + 음  + 이어지는 &음들 전체 묶음만 찾는 정규식
-    const pattern = /l(\d+)([a-gr][#+-]?)(?:&([a-gr][#+-]?\d*))+?/gi;
+    // l + 숫자 + 음표 + (& 뒤 음표들) 까지 전체 덩어리를 잡는 정규식
+    const pattern = /l(\d+)([a-g][+#-]?\.?\+?)(?:&([a-g][+#-]?\.?\+?\d*))*([^a-zA-Z0-9+.#-]|$)/gi;
 
-    let result = text.replace(pattern, (match) => {
-        // '&' 기준으로 분리
-        const parts = match.split('&');
-        // parts[0] = "l4a+" 이런 형태
+    let result = text.replace(pattern, (match, firstLen) => {
+        // '&' 로 전체 나누기
+        const raw = match.trim();
+        const parts = raw.split('&');
 
-        const first = parts[0]; 
-        let output = [first];
+        // 첫 부분 = l16d+  이런 구조
+        const first = parts[0];
+        const firstLenNum = first.match(/l(\d+)/)[1];
 
-        // &a+8, &a+16 같은 것 처리
+        let out = [first];
+
+        // & 뒤 음표 처리
         for (let i = 1; i < parts.length; i++) {
-            const p = parts[i];
+            let p = parts[i];
 
-            const note = p.match(/^([a-gr][#+-]?)(\d*)$/i);
-            if (!note) continue;
+            // 기존 l숫자 제거
+            p = p.replace(/l\d+/g, '');
 
-            const pitch = note[1];
-            const len = note[2];
+            // 음표 + 점(.) 포함하여 추출
+            // 예: d+, d+., f#., a+.
+            const m = p.match(/^([a-g][+#-]?\.?\+?)(\d*)/i);
+            if (!m) continue;
 
-            output.push("&" + pitch + (len ? len : ""));
+            let pitch = m[1];   // d+ 또는 d+. 또는 f#. 같은 형태
+            let len = firstLenNum; // 모든 뒤 음표는 첫 음의 길이를 붙임
+
+            out.push("&" + pitch + len);
         }
 
-        return output.join('');
+        return out.join('');
     });
 
     document.getElementById("output").value = result;
